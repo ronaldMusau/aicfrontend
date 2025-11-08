@@ -656,7 +656,7 @@ function DrawingAnimation({ currentNumber }: { currentNumber: number }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center">
       <div className="text-center">
-        <h1 className="text-5xl font-bold text-white mb-12">aic ushindi</h1>
+        <h1 className="text-5xl font-bold text-white mb-12">AIC USHINDI-SEME</h1>
         
         <div className="relative w-96 h-96 mx-auto mb-8">
           {/* Glass ball */}
