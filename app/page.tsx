@@ -145,16 +145,6 @@ export default function AICRaffleApp() {
 function CreateDrawSection({ onCreateDraw, loading }: { onCreateDraw: (name: string, tickets: number) => void; loading: boolean }) {
   const [drawName, setDrawName] = useState('');
   const [totalTickets, setTotalTickets] = useState('100');
-  const [isExpanded, setIsExpanded] = useState(true);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (drawName.trim() && totalTickets) {
-      onCreateDraw(drawName, parseInt(totalTickets));
-      setDrawName('');
-      setTotalTickets('100');
-    }
-  };
 
   const handleCreateClick = () => {
     if (drawName.trim() && totalTickets) {
@@ -310,13 +300,45 @@ function DrawDetailView({ drawId, onBack }: { drawId: number; onBack: () => void
     }
   };
 
+  const runAutomatedDrawSequence = async (winnersData: Winner[]) => {
+    const purchasedTickets = tickets.filter(t => t.purchased);
+
+    for (let i = 0; i < winnersData.length; i++) {
+      // Reset state for new draw
+      setRevealedWinners([]);
+      setIsDrawing(true);
+
+      // Animate random numbers for 3 seconds
+      const animationDuration = 3000;
+      const animationInterval = 100;
+      const iterations = animationDuration / animationInterval;
+      
+      for (let j = 0; j < iterations; j++) {
+        const randomTicket = purchasedTickets[Math.floor(Math.random() * purchasedTickets.length)];
+        setCurrentDrawingNumber(randomTicket.ticketNumber);
+        await new Promise(resolve => setTimeout(resolve, animationInterval));
+      }
+
+      // Show the actual winner
+      setCurrentDrawingNumber(winnersData[i].ticket.ticketNumber);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Stop animation and reveal this winner
+      setIsDrawing(false);
+      setRevealedWinners([winnersData[i]]);
+      
+      // Show winner for 3 seconds
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    
+    // Clear the revealed winners state to proceed to final page
+    setRevealedWinners([]);
+  };
+
   const handleRunDraw = async () => {
     if (!numberOfWinners || parseInt(numberOfWinners) < 1) return;
 
     try {
-      setIsDrawing(true);
-      setRevealedWinners([]);
-
       const response = await fetch(`${API_BASE_URL}/draws/${drawId}/run-draw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -328,39 +350,11 @@ function DrawDetailView({ drawId, onBack }: { drawId: number; onBack: () => void
       if (response.ok) {
         const winnersData = await response.json();
         setWinners(winnersData);
-
-        // Simulate drawing animation for each winner
-        const purchasedTickets = tickets.filter(t => t.purchased);
         
-        for (let i = 0; i < winnersData.length; i++) {
-          // Animate random numbers for 3 seconds
-          const animationDuration = 3000;
-          const animationInterval = 100;
-          const iterations = animationDuration / animationInterval;
-          
-          for (let j = 0; j < iterations; j++) {
-            const randomTicket = purchasedTickets[Math.floor(Math.random() * purchasedTickets.length)];
-            setCurrentDrawingNumber(randomTicket.ticketNumber);
-            await new Promise(resolve => setTimeout(resolve, animationInterval));
-          }
-
-          // Show the actual winner
-          setCurrentDrawingNumber(winnersData[i].ticket.ticketNumber);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          // Reveal this winner
-          setRevealedWinners(prev => [...prev, winnersData[i]]);
-          setIsDrawing(false);
-          
-          // Wait before next draw (if there are more winners)
-          if (i < winnersData.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            setIsDrawing(true);
-          }
-        }
-
-        // Show all winners after all draws are complete
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Start the automated sequence
+        await runAutomatedDrawSequence(winnersData);
+        
+        // After all draws complete, show final winners page
         setShowWinners(true);
         await fetchDrawDetails();
       }
@@ -480,38 +474,13 @@ function DrawDetailView({ drawId, onBack }: { drawId: number; onBack: () => void
     </div>;
   }
 
-  if (isDrawing) {
+  if (isDrawing || revealedWinners.length > 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
-        <DrawingAnimation currentNumber={currentDrawingNumber} />
-        
-        {/* Show revealed winners below the animation */}
-        {revealedWinners.length > 0 && (
-          <div className="max-w-4xl mx-auto px-4 pb-8">
-            <div className="space-y-4">
-              {revealedWinners.map((winner) => (
-                <div
-                  key={winner.rank}
-                  className="bg-gradient-to-r from-purple-800/80 to-purple-700/80 backdrop-blur-sm rounded-2xl p-6 border-l-8 border-yellow-400 flex items-center justify-between animate-fade-in"
-                >
-                  <div className="flex items-center gap-6">
-                    <div className="w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center">
-                      <Trophy className="w-6 h-6 text-purple-900" />
-                    </div>
-                    <div className="text-left">
-                      <h3 className="text-xl font-bold text-white mb-1">
-                        Ticket #{winner.ticket.ticketNumber}
-                      </h3>
-                      <p className="text-purple-200">Winner: {winner.ticket.buyerName}</p>
-                    </div>
-                  </div>
-                  <div className="text-4xl font-bold text-yellow-400">
-                    #{winner.rank}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex flex-col items-center justify-center p-8">
+        {isDrawing ? (
+          <DrawingAnimation currentNumber={currentDrawingNumber} />
+        ) : (
+          <WinnerReveal winner={revealedWinners[0]} />
         )}
       </div>
     );
@@ -654,25 +623,49 @@ function DrawDetailView({ drawId, onBack }: { drawId: number; onBack: () => void
 // Drawing Animation Component
 function DrawingAnimation({ currentNumber }: { currentNumber: number }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold text-white mb-12">AIC USHINDI-SEME</h1>
+    <div className="text-center">
+      <h1 className="text-5xl font-bold text-white mb-12">AIC USHINDI-SEME</h1>
+      
+      <div className="relative w-96 h-96 mx-auto mb-8">
+        {/* Glass ball */}
+        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-400/30 to-purple-600/30 backdrop-blur-sm border-4 border-purple-400/50">
+          <div className="absolute inset-8 rounded-full bg-gradient-to-br from-purple-500/20 to-transparent"></div>
+        </div>
         
-        <div className="relative w-96 h-96 mx-auto mb-8">
-          {/* Glass ball */}
-          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-400/30 to-purple-600/30 backdrop-blur-sm border-4 border-purple-400/50">
-            <div className="absolute inset-8 rounded-full bg-gradient-to-br from-purple-500/20 to-transparent"></div>
-          </div>
-          
-          {/* Bouncing number */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-32 h-32 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce">
-              <span className="text-purple-900 text-4xl font-bold">{currentNumber}</span>
-            </div>
+        {/* Bouncing number */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-32 h-32 bg-yellow-400 rounded-full flex items-center justify-center animate-bounce">
+            <span className="text-purple-900 text-4xl font-bold">{currentNumber}</span>
           </div>
         </div>
+      </div>
 
-        <p className="text-yellow-400 text-2xl font-bold animate-pulse">Drawing...</p>
+      <p className="text-yellow-400 text-2xl font-bold animate-pulse">Drawing...</p>
+    </div>
+  );
+}
+
+// Winner Reveal Component (single winner display)
+function WinnerReveal({ winner }: { winner: Winner }) {
+  return (
+    <div className="text-center animate-fade-in">
+      <h1 className="text-5xl font-bold text-white mb-8">🎉 WINNER! 🎉</h1>
+      
+      <div className="bg-gradient-to-r from-purple-800/80 to-purple-700/80 backdrop-blur-sm rounded-2xl p-12 border-l-8 border-yellow-400 max-w-2xl">
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-24 h-24 bg-yellow-400 rounded-full flex items-center justify-center animate-pulse">
+            <Trophy className="w-12 h-12 text-purple-900" />
+          </div>
+          <div className="text-center">
+            <div className="text-8xl font-bold text-yellow-400 mb-4">
+              #{winner.rank}
+            </div>
+            <h3 className="text-4xl font-bold text-white mb-2">
+              Ticket #{winner.ticket.ticketNumber}
+            </h3>
+            <p className="text-2xl text-purple-200">{winner.ticket.buyerName}</p>
+          </div>
+        </div>
       </div>
     </div>
   );
