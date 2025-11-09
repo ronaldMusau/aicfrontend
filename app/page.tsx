@@ -50,9 +50,11 @@ export default function AICRaffleApp() {
     try {
       const response = await fetch(`${API_BASE_URL}/draws`);
       const data = await response.json();
-      setDraws(data);
+      // Ensure data is an array
+      setDraws(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching draws:', error);
+      setDraws([]); // Set empty array on error
     }
   };
 
